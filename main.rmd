@@ -1,0 +1,160 @@
+---
+title : "Assigment"
+author : "Rafael"
+date : "10/10/2020"
+output : pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Load the required libraries
+library(igraph)
+library(ggplot2)
+# install.packages("irlba")
+library(irlba)
+# install.packages("kmeans")
+library(kmeans)
+
+# Read the data (skipping the first 24 lines)
+data <- read.csv("malin-head.csv", skip = 24)
+```
+
+## Question 1: Clustering using Girvan-Newman and Hierarchical Clustering
+```{r}
+# Assuming Y contains the relevant columns for clustering
+Y <- data[, c('rain', 'maxtp', 'mintp', 'wdsp', 'sun')]
+
+# Construct the network
+library(igraph)
+G <- graph_from_adjacency_matrix(dist(Y), mode="undirected")
+
+# Perform hierarchical clustering
+hierarchical_clusters <- cutree(hclust(as.dist(dist(Y)), method="ward.D2"), k = 5)
+
+# Perform Girvan-Newman clustering
+girvan_newman_clusters <- cluster_edge_betweenness(G)$membership
+
+# Plot the network with node colors corresponding to the clustering solutions
+library(ggplot2)
+library(igraph)
+plot_hierarchical <- as.data.frame(layout_with_drl(G))
+plot_hierarchical$cluster <- factor(hierarchical_clusters)
+plot_girvan_newman <- as.data.frame(layout_with_drl(G))
+plot_girvan_newman$cluster <- factor(girvan_newman_clusters)
+
+ggplot(plot_hierarchical, aes(x = V1, y = V2, color = cluster)) +
+  geom_point() +
+  ggtitle("Hierarchical Clustering") +
+  theme_minimal()
+
+ggplot(plot_girvan_newman, aes(x = V1, y = V2, color = cluster)) +
+  geom_point() +
+  ggtitle("Girvan-Newman Clustering") +
+  theme_minimal()
+```
+
+# Question 2: Spectral Clustering and Presence of Strong Clustering Structure
+```{r}
+# Compute the Laplacian matrix
+L <- as.matrix(graph_laplacian(G))
+
+# Perform spectral clustering
+library(kmeans)
+n_clusters <- 5
+spectral_clusters <- kmeans(L, centers = n_clusters)$cluster
+
+# Print the cluster assignments
+print("Spectral Clustering:")
+print(spectral_clusters)
+
+# Plot the network with node colors corresponding to the spectral clustering solution
+plot_spectral <- as.data.frame(layout_with_drl(G))
+plot_spectral$cluster <- factor(spectral_clusters)
+
+ggplot(plot_spectral, aes(x = V1, y = V2, color = cluster)) +
+  geom_point() +
+  ggtitle("Spectral Clustering") +
+  theme_minimal()
+```
+
+## Question 3: Stochastic Block Models (SBM) for Partitioning
+```{r}
+# Fit Stochastic Block Model
+library(igraph)
+sbm_partitions <- cluster_louvain(G)
+
+# Convert the partition to a list format
+sbm_clusters <- list()
+for (i in 1:length(sbm_partitions)) {
+  for (node in members(sbm_partitions[[i]])) {
+    sbm_clusters[[as.character(node)]] <- i
+  }
+}
+
+# Print the SBM clusters
+print("Stochastic Block Model Clustering:")
+print(sbm_clusters)
+
+# Plot the network with node colors corresponding to the SBM clustering solution
+plot_sbm <- as.data.frame(layout_with_drl(G))
+plot_sbm$cluster <- factor(unlist(sbm_clusters))
+
+ggplot(plot_sbm, aes(x = V1, y = V2, color = cluster)) +
+  geom_point() +
+  ggtitle("Stochastic Block Model Clustering") +
+  theme_minimal()
+```
+
+## Question 4: Comparing Stochastic BlockModel Clustering with Other Solutions
+
+To compare the Stochastic BlockModel (SBM) clustering solution with the other clustering solutions (Hierarchical Clustering, Girvan-Newman, and Spectral Clustering), we can use evaluation metrics to assess the agreement between different partitions. The Adjusted Rand Index (ARI) and Normalized Mutual Information (NMI) are commonly used metrics for clustering comparison.
+```{r}
+# Load the required library
+library(cluster)
+
+# Create a matrix with all clustering results
+all_clusters <- cbind(hierarchical_clusters, girvan_newman_clusters, spectral_clusters, unlist(sbm_clusters))
+
+# Compute the Adjusted Rand Index (ARI)
+ari_hierarchical_sbm <- adjustedRand(hierarchical_clusters, unlist(sbm_clusters))
+ari_girvan_newman_sbm <- adjustedRand(girvan_newman_clusters, unlist(sbm_clusters))
+ari_spectral_sbm <- adjustedRand(spectral_clusters, unlist(sbm_clusters))
+
+# Print the ARI values
+print("Adjusted Rand Index between Hierarchical Clustering and SBM:")
+print(ari_hierarchical_sbm)
+
+print("Adjusted Rand Index between Girvan-Newman Clustering and SBM:")
+print(ari_girvan_newman_sbm)
+
+print("Adjusted Rand Index between Spectral Clustering and SBM:")
+print(ari_spectral_sbm)
+```
+
+## Question 5: Two-dimensional Latent Position Cluster Model
+
+To fit a two-dimensional Latent Position Cluster Model to Y with 3 groups and plot the latent space using Page-Rank for node size and nodes' colors corresponding to the estimated partition:
+```{r}
+# Compute the latent positions using Laplacian Eigenmaps
+n_components <- 2
+X_latent <- irlba::irlba(L, n_components)$u
+
+# Fit KMeans to estimate the partition with 3 groups
+kmeans_clusters_3 <- kmeans(X_latent, centers = 3)$cluster
+
+# Plot the latent space with node colors corresponding to the KMeans clustering solution
+pagerank <- page_rank(G)$vector
+node_sizes <- pagerank * 3000
+
+plot_latent_3 <- data.frame(X_latent)
+plot_latent_3$cluster <- factor(kmeans_clusters_3)
+
+ggplot(plot_latent_3, aes(x = X1, y = X2, color = cluster, size = node_sizes)) +
+  geom_point() +
+  ggtitle("Two-dimensional Latent Position Cluster Model with 3 Groups") +
+  scale_size_continuous(range = c(1, 10)) +
+  theme_minimal()
+```
